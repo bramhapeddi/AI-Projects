@@ -1,0 +1,353 @@
+pipeline {
+    agent any
+    
+    options {
+        timestamps()
+        timeout(time: 2, unit: 'HOURS')
+        disableConcurrentBuilds()
+        ansiColor('xterm')
+    }
+    
+    environment {
+        NODE_VERSION = '18'
+        PYTHON_VERSION = '3.11'
+        JAVA_VERSION = '11'
+        TEST_ENV = "${params.TEST_ENV ?: 'qa'}"
+        PARALLEL_JOBS = "${params.PARALLEL_JOBS ?: '4'}"
+    }
+    
+    parameters {
+        choice(
+            name: 'TEST_ENV',
+            choices: ['dev', 'qa', 'stage'],
+            description: 'Test environment to run against'
+        )
+        choice(
+            name: 'TEST_SUITE',
+            choices: ['all', 'ui', 'api', 'backend'],
+            description: 'Test suite to run'
+        )
+        booleanParam(
+            name: 'PARALLEL',
+            defaultValue: true,
+            description: 'Run tests in parallel'
+        )
+        string(
+            name: 'PARALLEL_JOBS',
+            defaultValue: '4',
+            description: 'Number of parallel jobs'
+        )
+        booleanParam(
+            name: 'HEADED_UI',
+            defaultValue: false,
+            description: 'Run UI tests in headed mode'
+        )
+        booleanParam(
+            name: 'GENERATE_REPORTS',
+            defaultValue: true,
+            description: 'Generate test reports'
+        )
+    }
+    
+    stages {
+        stage('Setup') {
+            steps {
+                script {
+                    echo "🚀 Starting acme-banking-qa test automation pipeline"
+                    echo "Environment: ${TEST_ENV}"
+                    echo "Test Suite: ${TEST_SUITE}"
+                    echo "Parallel: ${PARALLEL}"
+                    echo "Parallel Jobs: ${PARALLEL_JOBS}"
+                }
+                
+                // Setup tools
+                sh '''
+                    echo "📦 Setting up build tools..."
+                    which node || echo "Node.js not found"
+                    which python3 || echo "Python3 not found"
+                    which mvn || echo "Maven not found"
+                    which java || echo "Java not found"
+                '''
+            }
+        }
+        
+        stage('Install Dependencies') {
+            parallel {
+                stage('UI Dependencies') {
+                    when {
+                        anyOf {
+                            expression { params.TEST_SUITE == 'all' }
+                            expression { params.TEST_SUITE == 'ui' }
+                        }
+                    }
+                    steps {
+                        dir('ui/playwright') {
+                            sh '''
+                                echo "📱 Installing Playwright dependencies..."
+                                npm ci
+                                npx playwright install --with-deps
+                            '''
+                        }
+                    }
+                }
+                
+                stage('API Dependencies') {
+                    when {
+                        anyOf {
+                            expression { params.TEST_SUITE == 'all' }
+                            expression { params.TEST_SUITE == 'api' }
+                        }
+                    }
+                    steps {
+                        dir('api/restassured') {
+                            sh '''
+                                echo "🔌 Installing Maven dependencies..."
+                                mvn dependency:resolve
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Backend Dependencies') {
+                    when {
+                        anyOf {
+                            expression { params.TEST_SUITE == 'all' }
+                            expression { params.TEST_SUITE == 'backend' }
+                        }
+                    }
+                    steps {
+                        dir('backend/pytest') {
+                            sh '''
+                                echo "🐍 Installing Python dependencies..."
+                                pip install -r requirements.txt
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            parallel {
+                stage('UI Tests') {
+                    when {
+                        anyOf {
+                            expression { params.TEST_SUITE == 'all' }
+                            expression { params.TEST_SUITE == 'ui' }
+                        }
+                    }
+                    steps {
+                        dir('ui/playwright') {
+                            script {
+                                def cmd = ['npx', 'playwright', 'test']
+                                
+                                if (params.HEADED_UI) {
+                                    cmd.add('--headed')
+                                }
+                                
+                                if (params.PARALLEL) {
+                                    cmd.addAll(['--workers', params.PARALLEL_JOBS])
+                                }
+                                
+                                sh """
+                                    echo "🎭 Running Playwright tests..."
+                                    ${cmd.join(' ')}
+                                """
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            dir('ui/playwright') {
+                                // Archive test results
+                                archiveArtifacts(
+                                    allowEmptyArchive: true,
+                                    artifacts: 'test-results/**/*,playwright-report/**/*'
+                                )
+                                
+                                // Publish HTML report
+                                publishHTML([
+                                    reportDir: 'playwright-report',
+                                    reportName: 'Playwright Report',
+                                    reportFiles: 'index.html',
+                                    keepAll: true
+                                ])
+                                
+                                // Publish JUnit results
+                                junit 'test-results/*.xml'
+                            }
+                        }
+                    }
+                }
+                
+                stage('API Tests') {
+                    when {
+                        anyOf {
+                            expression { params.TEST_SUITE == 'all' }
+                            expression { params.TEST_SUITE == 'api' }
+                        }
+                    }
+                    steps {
+                        dir('api/restassured') {
+                            sh '''
+                                echo "🔌 Running RestAssured tests..."
+                                mvn -B test -Dtest=**/*Test.java
+                            '''
+                        }
+                    }
+                    post {
+                        always {
+                            dir('api/restassured') {
+                                // Archive test results
+                                archiveArtifacts(
+                                    allowEmptyArchive: true,
+                                    artifacts: 'target/surefire-reports/**/*,target/allure-results/**/*'
+                                )
+                                
+                                // Publish JUnit results
+                                junit 'target/surefire-reports/*.xml'
+                                
+                                // Generate Allure report
+                                sh '''
+                                    if [ -d "target/allure-results" ]; then
+                                        allure generate target/allure-results --clean -o target/allure-report
+                                        allure open target/allure-report
+                                    fi
+                                '''
+                            }
+                        }
+                    }
+                }
+                
+                stage('Backend Tests') {
+                    when {
+                        anyOf {
+                            expression { params.TEST_SUITE == 'all' }
+                            expression { params.TEST_SUITE == 'backend' }
+                        }
+                    }
+                    steps {
+                        dir('backend/pytest') {
+                            script {
+                                def cmd = ['python', '-m', 'pytest']
+                                
+                                if (params.PARALLEL) {
+                                    cmd.addAll(['-n', params.PARALLEL_JOBS])
+                                }
+                                
+                                cmd.addAll([
+                                    '--junitxml=test-results/results.xml',
+                                    '--html=test-results/report.html',
+                                    '--allure-dir=allure-results'
+                                ])
+                                
+                                sh """
+                                    echo "🐍 Running pytest tests..."
+                                    ${cmd.join(' ')}
+                                """
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            dir('backend/pytest') {
+                                // Archive test results
+                                archiveArtifacts(
+                                    allowEmptyArchive: true,
+                                    artifacts: 'test-results/**/*,allure-results/**/*'
+                                )
+                                
+                                // Publish JUnit results
+                                junit 'test-results/results.xml'
+                                
+                                // Publish HTML report
+                                publishHTML([
+                                    reportDir: 'test-results',
+                                    reportName: 'Pytest Report',
+                                    reportFiles: 'report.html',
+                                    keepAll: true
+                                ])
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Generate Reports') {
+            when {
+                expression { params.GENERATE_REPORTS }
+            }
+            steps {
+                script {
+                    echo "📊 Generating consolidated test reports..."
+                    
+                    // Generate Allure report if available
+                    if (fileExists('api/restassured/target/allure-results')) {
+                        dir('api/restassured') {
+                            sh '''
+                                allure generate target/allure-results --clean -o target/allure-report
+                                allure open target/allure-report
+                            '''
+                        }
+                    }
+                    
+                    // Generate summary report
+                    sh '''
+                        echo "## Test Execution Summary" > test-summary.md
+                        echo "Environment: ${TEST_ENV}" >> test-summary.md
+                        echo "Test Suite: ${TEST_SUITE}" >> test-summary.md
+                        echo "Parallel: ${PARALLEL}" >> test-summary.md
+                        echo "Timestamp: $(date)" >> test-summary.md
+                        echo "" >> test-summary.md
+                        echo "### Test Results" >> test-summary.md
+                        echo "- UI Tests: $(find ui/playwright/test-results -name "*.xml" 2>/dev/null | wc -l) result files" >> test-summary.md
+                        echo "- API Tests: $(find api/restassured/target/surefire-reports -name "*.xml" 2>/dev/null | wc -l) result files" >> test-summary.md
+                        echo "- Backend Tests: $(find backend/pytest/test-results -name "*.xml" 2>/dev/null | wc -l) result files" >> test-summary.md
+                    '''
+                }
+            }
+            post {
+                always {
+                    // Archive summary report
+                    archiveArtifacts(
+                        allowEmptyArchive: true,
+                        artifacts: 'test-summary.md'
+                    )
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                echo "🏁 Test automation pipeline completed"
+                echo "Check the archived artifacts for detailed results"
+            }
+        }
+        
+        success {
+            script {
+                echo "✅ All tests passed successfully!"
+            }
+        }
+        
+        failure {
+            script {
+                echo "❌ Some tests failed. Check the logs above for details."
+            }
+        }
+        
+        cleanup {
+            script {
+                echo "🧹 Cleaning up workspace..."
+                // Clean up any temporary files
+                sh '''
+                    find . -name "*.tmp" -delete 2>/dev/null || true
+                    find . -name "*.log" -delete 2>/dev/null || true
+                '''
+            }
+        }
+    }
+}

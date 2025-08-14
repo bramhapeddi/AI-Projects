@@ -1,0 +1,37 @@
+solution:
+  name: acme-banking-qa
+  description: Web + API + backend automation for Acme Banking
+  repo_layout: monorepo # monorepo|polyrepo
+  languages:
+    ui: typescript
+    api: java
+    backend: python
+  ui:
+    framework: playwright
+    pattern: POM # POM|Screenplay
+    browsers: [chromium, firefox, webkit]
+    platforms: [windows, linux]
+    headless: true
+  api:
+    framework: restassured
+    inputs:
+      openapi: specs/banking.yaml
+      postman: specs/postman_collection.json
+  backend:
+    framework: pytest
+    services: [db, queue]
+  test_types: [functional, smoke, regression]
+  data_strategy:
+    type: datadriven # datadriven|factory|hybrid
+    sources: [csv, json]
+  environments: [dev, qa, stage]
+  secrets:
+    provider: env # env|vault|aws-secrets|azure-kv|gcp-sm
+  cicd:
+    providers: [jenkins, azure, aws, gcp]
+    default: jenkins
+  reporting:
+    providers: [allure, playwright_html]
+  quality:
+    flaky_retries: 2
+    parallelism: auto

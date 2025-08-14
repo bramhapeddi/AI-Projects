@@ -1,0 +1,11 @@
+import { test, expect } from '@playwright/test';
+
+const baseUrl = {{ base_url_var }} || 'https://example.com';
+
+test.describe('{{ name }}', () => {
+  test('{{ (labels||[]).join(' ') }} {{ name }}', async ({ page }) => {
+    {% for step in steps %}
+    {{ step }}
+    {% endfor %}
+  });
+});

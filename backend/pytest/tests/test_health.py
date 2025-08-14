@@ -1,0 +1,110 @@
+"""
+Health check tests for acme-banking-qa backend services
+"""
+
+import pytest
+import requests
+import time
+from typing import Dict, Any
+
+@pytest.mark.smoke
+class TestHealthChecks:
+    """Test health endpoints for all services"""
+    
+    def test_api_health(self, api_client: requests.Session):
+        """Test API health endpoint"""
+        response = api_client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "UP"
+        assert "timestamp" in data
+        assert "version" in data
+    
+    def test_api_ready(self, api_client: requests.Session):
+        """Test API ready endpoint"""
+        response = api_client.get("/ready")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ready"] is True
+    
+    def test_api_live(self, api_client: requests.Session):
+        """Test API live endpoint"""
+        response = api_client.get("/live")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["alive"] is True
+    
+    def test_health_response_time(self, api_client: requests.Session):
+        """Test health endpoint response time"""
+        start_time = time.time()
+        response = api_client.get("/health")
+        end_time = time.time()
+        
+        assert response.status_code == 200
+        response_time = end_time - start_time
+        assert response_time < 1.0, f"Health check took {response_time:.2f}s, expected < 1.0s"
+    
+    @pytest.mark.parametrize("endpoint", ["/health", "/ready", "/live"])
+    def test_health_endpoints_content_type(self, api_client: requests.Session, endpoint: str):
+        """Test health endpoints return correct content type"""
+        response = api_client.get(endpoint)
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/json"
+
+@pytest.mark.integration
+class TestServiceHealth:
+    """Test health of dependent services"""
+    
+    def test_database_health(self, db_connection):
+        """Test database connectivity"""
+        cursor = db_connection.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+        assert result[0] == 1
+        cursor.close()
+    
+    def test_redis_health(self, redis_connection):
+        """Test Redis connectivity"""
+        redis_connection.set("test_key", "test_value")
+        value = redis_connection.get("test_key")
+        assert value.decode() == "test_value"
+        redis_connection.delete("test_key")
+    
+    def test_external_service_health(self, api_client: requests.Session):
+        """Test external service dependencies"""
+        # Test a service that this API depends on
+        try:
+            response = api_client.get("/external-service/health")
+            assert response.status_code in [200, 503]  # 503 if service is down
+        except requests.exceptions.RequestException:
+            pytest.skip("External service not accessible")
+
+@pytest.mark.regression
+class TestHealthEdgeCases:
+    """Test health endpoints with edge cases"""
+    
+    def test_health_with_invalid_method(self, api_client: requests.Session):
+        """Test health endpoint with POST method"""
+        response = api_client.post("/health")
+        assert response.status_code == 405  # Method Not Allowed
+    
+    def test_health_with_query_params(self, api_client: requests.Session):
+        """Test health endpoint with query parameters"""
+        response = api_client.get("/health?detailed=true")
+        assert response.status_code == 200
+        data = response.json()
+        # Should still return basic health info even with query params
+        assert "status" in data
+    
+    def test_health_headers(self, api_client: requests.Session):
+        """Test health endpoint response headers"""
+        response = api_client.get("/health")
+        assert response.status_code == 200
+        
+        # Check for security headers
+        assert "X-Content-Type-Options" in response.headers
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        
+        # Check for cache control
+        assert "Cache-Control" in response.headers
+        assert "no-cache" in response.headers["Cache-Control"]

@@ -1,0 +1,158 @@
+"""
+Pytest configuration and fixtures for {{ sol.name }} backend tests
+"""
+
+import os
+import pytest
+import requests
+from typing import Generator, Dict, Any
+from pathlib import Path
+import yaml
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Test configuration
+TEST_CONFIG = {
+    "base_url": os.getenv("BASE_URL", "https://api.example.com"),
+    "db_uri": os.getenv("DB_URI", "postgresql://test:test@localhost:5432/testdb"),
+    "redis_uri": os.getenv("REDIS_URI", "redis://localhost:6379/0"),
+    "timeout": int(os.getenv("TIMEOUT", "30")),
+    "retries": int(os.getenv("RETRIES", "3")),
+}
+
+def load_env_config(environment: str = None) -> Dict[str, Any]:
+    """Load environment-specific configuration"""
+    if not environment:
+        environment = os.getenv("TEST_ENV", "dev")
+    
+    config_file = Path(__file__).parent.parent.parent / "env" / f"config.{environment}.yaml"
+    
+    if config_file.exists():
+        with open(config_file, 'r') as f:
+            env_config = yaml.safe_load(f)
+            TEST_CONFIG.update(env_config)
+    
+    return TEST_CONFIG
+
+@pytest.fixture(scope="session")
+def config() -> Dict[str, Any]:
+    """Get test configuration"""
+    return load_env_config()
+
+@pytest.fixture(scope="session")
+def base_url(config: Dict[str, Any]) -> str:
+    """Get base URL for API tests"""
+    return config["base_url"]
+
+@pytest.fixture(scope="session")
+def api_client(base_url: str) -> requests.Session:
+    """Create API client session"""
+    session = requests.Session()
+    session.base_url = base_url
+    session.headers.update({
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "{{ sol.name }}-Backend-Tests/1.0"
+    })
+    
+    # Add authentication if available
+    token = os.getenv("API_TOKEN")
+    if token:
+        session.headers["Authorization"] = f"Bearer {token}"
+    
+    return session
+
+@pytest.fixture(scope="session")
+def db_connection(config: Dict[str, Any]):
+    """Database connection fixture"""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(config["db_uri"])
+        yield conn
+        conn.close()
+    except ImportError:
+        pytest.skip("psycopg2 not available")
+    except Exception as e:
+        pytest.skip(f"Database connection failed: {e}")
+
+@pytest.fixture(scope="session")
+def redis_connection(config: Dict[str, Any]):
+    """Redis connection fixture"""
+    try:
+        import redis
+        r = redis.from_url(config["redis_uri"])
+        yield r
+        r.close()
+    except ImportError:
+        pytest.skip("redis not available")
+    except Exception as e:
+        pytest.skip(f"Redis connection failed: {e}")
+
+@pytest.fixture(autouse=True)
+def setup_test_environment(config: Dict[str, Any]):
+    """Setup test environment before each test"""
+    # Set test environment variables
+    os.environ["TESTING"] = "true"
+    os.environ["TEST_ENV"] = config.get("environment", "test")
+    
+    yield
+    
+    # Cleanup after test
+    if "TESTING" in os.environ:
+        del os.environ["TESTING"]
+
+@pytest.fixture
+def test_data() -> Dict[str, Any]:
+    """Load test data from files"""
+    data_dir = Path(__file__).parent.parent.parent / "data"
+    
+    test_data = {}
+    
+    # Load CSV data
+    users_file = data_dir / "users.csv"
+    if users_file.exists():
+        import csv
+        with open(users_file, 'r') as f:
+            reader = csv.DictReader(f)
+            test_data["users"] = list(reader)
+    
+    # Load JSON data
+    products_file = data_dir / "products.json"
+    if products_file.exists():
+        import json
+        with open(products_file, 'r') as f:
+            test_data["products"] = json.load(f)
+    
+    return test_data
+
+def pytest_configure(config):
+    """Configure pytest with custom markers"""
+    config.addinivalue_line(
+        "markers", "smoke: marks tests as smoke tests"
+    )
+    config.addinivalue_line(
+        "markers", "regression: marks tests as regression tests"
+    )
+    config.addinivalue_line(
+        "markers", "integration: marks tests as integration tests"
+    )
+    config.addinivalue_line(
+        "markers", "slow: marks tests as slow tests"
+    )
+
+def pytest_collection_modifyitems(config, items):
+    """Modify test collection to add markers based on test names"""
+    for item in items:
+        # Add smoke marker to health check tests
+        if "health" in item.name.lower():
+            item.add_marker(pytest.mark.smoke)
+        
+        # Add integration marker to database tests
+        if "database" in item.name.lower() or "db" in item.name.lower():
+            item.add_marker(pytest.mark.integration)
+        
+        # Add slow marker to tests that might take time
+        if "performance" in item.name.lower() or "load" in item.name.lower():
+            item.add_marker(pytest.mark.slow)

@@ -1,0 +1,19 @@
+# Core dependencies for the test automation orchestrator
+typer>=0.9.0
+pydantic>=2.0.0
+jinja2>=3.1.0
+ruamel.yaml>=0.17.0
+pyyaml>=6.0
+
+# Optional: For enhanced functionality
+click>=8.1.0
+rich>=13.0.0
+colorama>=0.4.6
+tabulate>=0.9.0
+
+# Development dependencies (optional)
+# black>=23.0.0
+# flake8>=6.0.0
+# mypy>=1.0.0
+# pytest>=7.0.0
+# pytest-cov>=4.0.0

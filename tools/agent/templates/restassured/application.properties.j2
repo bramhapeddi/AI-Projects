@@ -1,0 +1,25 @@
+# Test Configuration
+test.environment={{ sol.environments[0] if sol.environments else 'dev' }}
+test.parallel=true
+test.retries={{ sol.quality.flaky_retries }}
+
+# API Configuration
+api.base.url=${BASE_URL:https://api.example.com}
+api.timeout=30000
+api.retries=3
+
+# Authentication
+api.auth.type=bearer
+api.auth.token=${API_TOKEN:}
+
+# Test Data
+test.data.users=testdata/users.csv
+test.data.products=testdata/products.json
+
+# Reporting
+allure.results.directory=target/allure-results
+allure.report.directory=target/allure-report
+
+# Logging
+logging.level.com.{{ sol.name }}.api=DEBUG
+logging.level.io.restassured=INFO

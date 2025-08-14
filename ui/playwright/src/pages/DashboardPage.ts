@@ -1,0 +1,35 @@
+import { Page, Locator, expect } from '@playwright/test';
+
+export class DashboardPage {
+  readonly page: Page;
+  readonly welcomeMessage: Locator;
+  readonly navigationMenu: Locator;
+  readonly logoutButton: Locator;
+  readonly userProfile: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.welcomeMessage = page.locator('.welcome-message');
+    this.navigationMenu = page.locator('.nav-menu');
+    this.logoutButton = page.locator('.logout-btn');
+    this.userProfile = page.locator('.user-profile');
+  }
+
+  async expectDashboardLoaded() {
+    await expect(this.welcomeMessage).toBeVisible();
+    await expect(this.navigationMenu).toBeVisible();
+    await expect(this.userProfile).toBeVisible();
+  }
+
+  async logout() {
+    await this.logoutButton.click();
+  }
+
+  async navigateTo(section: string) {
+    await this.page.click(`text=${section}`);
+  }
+
+  async expectUserLoggedIn(username: string) {
+    await expect(this.userProfile).toContainText(username);
+  }
+}

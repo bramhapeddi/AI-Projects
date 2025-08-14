@@ -1,0 +1,72 @@
+package com.{{ sol.name }}.api.specs;
+
+import com.{{ sol.name }}.api.base.ApiTest;
+import io.qameta.allure.Description;
+import io.qameta.allure.Epic;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.*;
+
+@Epic("{{ sol.name }} API")
+@Feature("{{ operation_id }}")
+public class {{ class_name }} extends ApiTest {
+    
+    @Test
+    @DisplayName("{{ summary or operation_id }}")
+    @Description("Test {{ method }} {{ path }} endpoint")
+    @Story("{{ operation_id }}")
+    void test{{ class_name }}() {
+        given()
+            .spec(requestSpec)
+        {% if has_body and body_schema %}
+            .body("{}") // TODO: Add proper request body based on schema
+        {% endif %}
+        {% for param in path_params %}
+            .pathParam("{{ param.name }}", "test_{{ param.name }}")
+        {% endfor %}
+        {% for param in query_params %}
+            .queryParam("{{ param.name }}", "test_{{ param.name }}")
+        {% endfor %}
+        .when()
+            .request("{{ method }}", "{{ path }}")
+        .then()
+            .statusCode({{ expected_status }})
+            .contentType("application/json");
+    }
+    
+    @Test
+    @DisplayName("{{ operation_id }} - Invalid Request")
+    @Description("Test {{ method }} {{ path }} with invalid data")
+    @Story("{{ operation_id }} - Negative")
+    void test{{ class_name }}InvalidRequest() {
+        given()
+            .spec(requestSpec)
+            .body("invalid_data")
+        .when()
+            .request("{{ method }}", "{{ path }}")
+        .then()
+            .statusCode(400);
+    }
+    
+    {% if method.upper() == "GET" %}
+    @Test
+    @DisplayName("{{ operation_id }} - Response Structure")
+    @Description("Verify response structure for {{ method }} {{ path }}")
+    @Story("{{ operation_id }} - Validation")
+    void test{{ class_name }}ResponseStructure() {
+        given()
+            .spec(requestSpec)
+        .when()
+            .request("{{ method }}", "{{ path }}")
+        .then()
+            .statusCode({{ expected_status }})
+            .body("$", notNullValue());
+    }
+    {% endif %}
+}

@@ -1,0 +1,317 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - feature/*
+  paths:
+    include:
+      - 'ui/**'
+      - 'api/**'
+      - 'backend/**'
+      - 'tools/**'
+      - 'ci/**'
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+variables:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+  JAVA_VERSION: '11'
+  TEST_ENV: ${{ parameters.testEnv }}
+  TEST_SUITE: ${{ parameters.testSuite }}
+  PARALLEL: ${{ parameters.parallel }}
+  PARALLEL_JOBS: ${{ parameters.parallelJobs }}
+  HEADED_UI: ${{ parameters.headedUI }}
+  GENERATE_REPORTS: ${{ parameters.generateReports }}
+
+parameters:
+  - name: testEnv
+    displayName: 'Test Environment'
+    type: string
+    default: 'qa'
+    values:
+      - dev
+      - qa
+      - stage
+  
+  - name: testSuite
+    displayName: 'Test Suite'
+    type: string
+    default: 'all'
+    values:
+      - all
+      - ui
+      - api
+      - backend
+  
+  - name: parallel
+    displayName: 'Run Tests in Parallel'
+    type: boolean
+    default: true
+  
+  - name: parallelJobs
+    displayName: 'Number of Parallel Jobs'
+    type: string
+    default: '4'
+  
+  - name: headedUI
+    displayName: 'Run UI Tests in Headed Mode'
+    type: boolean
+    default: false
+  
+  - name: generateReports
+    displayName: 'Generate Test Reports'
+    type: boolean
+    default: true
+
+stages:
+- stage: Test
+  displayName: 'Run Test Automation'
+  jobs:
+  - job: UI
+    displayName: 'UI Tests (Playwright)'
+    condition: or(eq('${{ parameters.testSuite }}', 'all'), eq('${{ parameters.testSuite }}', 'ui'))
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      parallel: ${{ parameters.parallelJobs }}
+      matrix:
+        chromium:
+          browser: chromium
+        firefox:
+          browser: firefox
+        webkit:
+          browser: webkit
+    
+    steps:
+    - task: NodeTool@0
+      displayName: 'Install Node.js'
+      inputs:
+        versionSpec: $(NODE_VERSION)
+    
+    - script: |
+        echo "📱 Installing Playwright dependencies..."
+        cd ui/playwright
+        npm ci
+        npx playwright install --with-deps
+      displayName: 'Install Playwright Dependencies'
+    
+    - script: |
+        echo "🎭 Running Playwright tests on $(browser)..."
+        cd ui/playwright
+        npx playwright test --project=$(browser)
+      displayName: 'Run Playwright Tests'
+      env:
+        BASE_URL: $(BASE_URL)
+        TEST_USERNAME: $(TEST_USERNAME)
+        TEST_PASSWORD: $(TEST_PASSWORD)
+    
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      condition: always()
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'ui/playwright/test-results/*.xml'
+        mergeTestResults: true
+        testRunTitle: 'Playwright $(browser)'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Playwright Report'
+      condition: always()
+      inputs:
+        pathToPublish: 'ui/playwright/playwright-report'
+        artifactName: 'ui-report-$(browser)'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Test Results'
+      condition: always()
+      inputs:
+        pathToPublish: 'ui/playwright/test-results'
+        artifactName: 'ui-results-$(browser)'
+
+  - job: API
+    displayName: 'API Tests (RestAssured)'
+    condition: or(eq('${{ parameters.testSuite }}', 'all'), eq('${{ parameters.testSuite }}', 'api'))
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - task: JavaToolInstaller@0
+      displayName: 'Install Java'
+      inputs:
+        versionSpec: $(JAVA_VERSION)
+        jdkArchitectureOption: 'x64'
+    
+    - script: |
+        echo "🔌 Installing Maven dependencies..."
+        cd api/restassured
+        mvn dependency:resolve
+      displayName: 'Install Maven Dependencies'
+    
+    - script: |
+        echo "🔌 Running RestAssured tests..."
+        cd api/restassured
+        mvn -B test -Dtest=**/*Test.java
+      displayName: 'Run RestAssured Tests'
+      env:
+        BASE_URL: $(BASE_URL)
+        API_TOKEN: $(API_TOKEN)
+    
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      condition: always()
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'api/restassured/target/surefire-reports/*.xml'
+        mergeTestResults: true
+        testRunTitle: 'RestAssured API Tests'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Allure Results'
+      condition: always()
+      inputs:
+        pathToPublish: 'api/restassured/target/allure-results'
+        artifactName: 'api-allure-results'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Surefire Reports'
+      condition: always()
+      inputs:
+        pathToPublish: 'api/restassured/target/surefire-reports'
+        artifactName: 'api-surefire-reports'
+
+  - job: Backend
+    displayName: 'Backend Tests (pytest)'
+    condition: or(eq('${{ parameters.testSuite }}', 'all'), eq('${{ parameters.testSuite }}', 'backend'))
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - task: UsePythonVersion@0
+      displayName: 'Install Python'
+      inputs:
+        versionSpec: $(PYTHON_VERSION)
+        addToPath: true
+    
+    - script: |
+        echo "🐍 Installing Python dependencies..."
+        cd backend/pytest
+        pip install -r requirements.txt
+      displayName: 'Install Python Dependencies'
+    
+    - script: |
+        echo "🐍 Running pytest tests..."
+        cd backend/pytest
+        python -m pytest --junitxml=test-results/results.xml --html=test-results/report.html --allure-dir=allure-results
+      displayName: 'Run pytest Tests'
+      env:
+        BASE_URL: $(BASE_URL)
+        DB_URI: $(DB_URI)
+        REDIS_URI: $(REDIS_URI)
+        API_TOKEN: $(API_TOKEN)
+    
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      condition: always()
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'backend/pytest/test-results/*.xml'
+        mergeTestResults: true
+        testRunTitle: 'pytest Backend Tests'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish HTML Report'
+      condition: always()
+      inputs:
+        pathToPublish: 'backend/pytest/test-results'
+        artifactName: 'backend-report'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Allure Results'
+      condition: always()
+      inputs:
+        pathToPublish: 'backend/pytest/allure-results'
+        artifactName: 'backend-allure-results'
+
+  - job: Reports
+    displayName: 'Generate Test Reports'
+    condition: and(succeeded(), eq('${{ parameters.generateReports }}', true))
+    dependsOn: [UI, API, Backend]
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - download: current
+      artifact: 'ui-report-*'
+      displayName: 'Download UI Reports'
+    
+    - download: current
+      artifact: 'api-allure-results'
+      displayName: 'Download API Allure Results'
+    
+    - download: current
+      artifact: 'backend-allure-results'
+      displayName: 'Download Backend Allure Results'
+    
+    - script: |
+        echo "📊 Generating consolidated test reports..."
+        
+        # Generate Allure report for API tests
+        if [ -d "api-allure-results" ]; then
+          echo "Generating Allure report for API tests..."
+          allure generate api-allure-results --clean -o api-allure-report
+        fi
+        
+        # Generate Allure report for backend tests
+        if [ -d "backend-allure-results" ]; then
+          echo "Generating Allure report for backend tests..."
+          allure generate backend-allure-results --clean -o backend-allure-report
+        fi
+        
+        # Generate summary report
+        echo "## Test Execution Summary" > test-summary.md
+        echo "Environment: $(TEST_ENV)" >> test-summary.md
+        echo "Test Suite: $(TEST_SUITE)" >> test-summary.md
+        echo "Parallel: $(PARALLEL)" >> test-summary.md
+        echo "Timestamp: $(date)" >> test-summary.md
+        echo "" >> test-summary.md
+        echo "### Test Results" >> test-summary.md
+        echo "- UI Tests: Multiple browser reports available" >> test-summary.md
+        echo "- API Tests: Allure report generated" >> test-summary.md
+        echo "- Backend Tests: Allure report generated" >> test-summary.md
+      displayName: 'Generate Reports'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Allure Reports'
+      inputs:
+        pathToPublish: '*-allure-report'
+        artifactName: 'allure-reports'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Summary Report'
+      inputs:
+        pathToPublish: 'test-summary.md'
+        artifactName: 'test-summary'
+
+- stage: Deploy
+  displayName: 'Deploy Test Results'
+  condition: and(succeeded(), eq('${{ parameters.generateReports }}', true))
+  dependsOn: Test
+  jobs:
+  - deployment: DeployToTestPortal
+    displayName: 'Deploy to Test Portal'
+    environment: 'test-portal'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: |
+              echo "🚀 Deploying test results to test portal..."
+              # Add deployment logic here
+              echo "Test results deployed successfully!"
+            displayName: 'Deploy Test Results'

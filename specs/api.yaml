@@ -1,0 +1,607 @@
+openapi: 3.0.3
+info:
+  title: Acme Banking API
+  description: API for Acme Banking online services
+  version: 1.0.0
+  contact:
+    name: Acme Banking Team
+    email: api@acmebanking.com
+
+servers:
+  - url: https://api.acmebanking.com/v1
+    description: Production server
+  - url: https://qa-api.acmebanking.com/v1
+    description: QA server
+  - url: https://dev-api.acmebanking.com/v1
+    description: Development server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check endpoint
+      description: Returns the health status of the API and its dependencies
+      tags:
+        - Health
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: API is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      operationId: login
+      summary: User login
+      description: Authenticate user with username and password
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: User logout
+      description: Logout user and invalidate session
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /accounts:
+    get:
+      operationId: getAccounts
+      summary: Get user accounts
+      description: Retrieve list of accounts for authenticated user
+      tags:
+        - Accounts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          description: Filter accounts by type
+          schema:
+            type: string
+            enum: [checking, savings, credit]
+        - name: status
+          in: query
+          description: Filter accounts by status
+          schema:
+            type: string
+            enum: [active, inactive, suspended]
+      responses:
+        '200':
+          description: List of accounts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Account'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /accounts/{accountId}:
+    get:
+      operationId: getAccount
+      summary: Get account details
+      description: Retrieve detailed information for a specific account
+      tags:
+        - Accounts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          description: Account identifier
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+      responses:
+        '200':
+          description: Account details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /accounts/{accountId}/balance:
+    get:
+      operationId: getAccountBalance
+      summary: Get account balance
+      description: Retrieve current balance for a specific account
+      tags:
+        - Accounts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          description: Account identifier
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+      responses:
+        '200':
+          description: Account balance retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceResponse'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /transfers:
+    post:
+      operationId: createTransfer
+      summary: Create money transfer
+      description: Transfer money between accounts
+      tags:
+        - Transfers
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '201':
+          description: Transfer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResponse'
+        '400':
+          description: Invalid transfer request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Transfer validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /transfers/{transferId}:
+    get:
+      operationId: getTransfer
+      summary: Get transfer details
+      description: Retrieve details for a specific transfer
+      tags:
+        - Transfers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          description: Transfer identifier
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transfer details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /transactions:
+    get:
+      operationId: getTransactions
+      summary: Get transaction history
+      description: Retrieve transaction history for authenticated user
+      tags:
+        - Transactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: query
+          description: Filter by account ID
+          schema:
+            type: string
+        - name: fromDate
+          in: query
+          description: Filter transactions from date (ISO 8601)
+          schema:
+            type: string
+            format: date
+        - name: toDate
+          in: query
+          description: Filter transactions to date (ISO 8601)
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          description: Maximum number of transactions to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of transactions to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Transaction history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        version:
+          type: string
+          example: "1.0.0"
+        dependencies:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [healthy, unhealthy]
+            redis:
+              type: string
+              enum: [healthy, unhealthy]
+            external_api:
+              type: string
+              enum: [healthy, unhealthy]
+
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: "john.doe"
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          example: "securePassword123"
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expires_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T18:30:00Z"
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        username:
+          type: string
+          example: "john.doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "12345"
+        type:
+          type: string
+          enum: [checking, savings, credit]
+          example: "checking"
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+          example: "active"
+        balance:
+          $ref: '#/components/schemas/Money'
+        currency:
+          type: string
+          example: "USD"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Money:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: decimal
+          minimum: 0
+          example: 1250.75
+        currency:
+          type: string
+          example: "USD"
+
+    BalanceResponse:
+      type: object
+      properties:
+        account_id:
+          type: string
+          example: "12345"
+        balance:
+          $ref: '#/components/schemas/Money'
+        last_updated:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    TransferRequest:
+      type: object
+      required:
+        - from_account_id
+        - to_account_id
+        - amount
+      properties:
+        from_account_id:
+          type: string
+          example: "12345"
+        to_account_id:
+          type: string
+          example: "67890"
+        amount:
+          $ref: '#/components/schemas/Money'
+        description:
+          type: string
+          maxLength: 255
+          example: "Monthly savings transfer"
+
+    TransferResponse:
+      type: object
+      properties:
+        transfer_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        status:
+          type: string
+          enum: [pending, completed, failed]
+          example: "completed"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    Transfer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        from_account_id:
+          type: string
+          example: "12345"
+        to_account_id:
+          type: string
+          example: "67890"
+        amount:
+          $ref: '#/components/schemas/Money'
+        status:
+          type: string
+          enum: [pending, completed, failed]
+          example: "completed"
+        description:
+          type: string
+          example: "Monthly savings transfer"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        completed_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:31:00Z"
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        account_id:
+          type: string
+          example: "12345"
+        type:
+          type: string
+          enum: [deposit, withdrawal, transfer_in, transfer_out, fee]
+          example: "transfer_in"
+        amount:
+          $ref: '#/components/schemas/Money'
+        description:
+          type: string
+          example: "Transfer from checking account"
+        balance_after:
+          $ref: '#/components/schemas/Money'
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    TransactionList:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 150
+            limit:
+              type: integer
+              example: 20
+            offset:
+              type: integer
+              example: 0
+            has_more:
+              type: boolean
+              example: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid request"
+        message:
+          type: string
+          example: "The request could not be processed"
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: "amount"
+              message:
+                type: string
+                example: "Amount must be greater than 0"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        request_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"

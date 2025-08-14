@@ -1,0 +1,28 @@
+import { test, expect } from '@playwright/test';
+import { LoginPage } from '../src/pages/LoginPage';
+import { DashboardPage } from '../src/pages/DashboardPage';
+
+test.describe('Smoke Tests', () => {
+  test('application loads and shows login page', async ({ page }) => {
+    await page.goto('/');
+    await expect(page).toHaveTitle(/{{ sol.name }}/i);
+    await expect(page.locator('h1')).toBeVisible();
+  });
+
+  test('login page is accessible', async ({ page }) => {
+    const loginPage = new LoginPage(page);
+    await loginPage.goto();
+    await loginPage.expectLoginFormVisible();
+  });
+
+  test('can navigate to help page', async ({ page }) => {
+    await page.goto('/help');
+    await expect(page.locator('h1')).toContainText('Help');
+  });
+
+  test('footer links are present', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('footer')).toBeVisible();
+    await expect(page.locator('footer a')).toHaveCount(3);
+  });
+});

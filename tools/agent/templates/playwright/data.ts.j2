@@ -1,0 +1,47 @@
+import fs from 'fs';
+import path from 'path';
+
+export interface TestUser {
+  username: string;
+  password: string;
+  role: string;
+}
+
+export interface TestData {
+  users: TestUser[];
+  products: any[];
+  orders: any[];
+}
+
+export function loadCsvData(filePath: string): string[][] {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  return content.trim().split('\n').map(line => line.split(','));
+}
+
+export function loadJsonData(filePath: string): any {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  return JSON.parse(content);
+}
+
+export function getTestUsers(): TestUser[] {
+  const dataPath = path.join(__dirname, '../../../data/users.csv');
+  if (fs.existsSync(dataPath)) {
+    const rows = loadCsvData(dataPath);
+    return rows.slice(1).map(row => ({
+      username: row[0],
+      password: row[1],
+      role: row[2] || 'user'
+    }));
+  }
+  
+  // Default test users
+  return [
+    { username: 'testuser', password: 'password', role: 'user' },
+    { username: 'admin', password: 'admin123', role: 'admin' }
+  ];
+}
+
+export function getRandomUser(): TestUser {
+  const users = getTestUsers();
+  return users[Math.floor(Math.random() * users.length)];
+}
