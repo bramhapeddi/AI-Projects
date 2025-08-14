@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🚀 AI-Powered Test Automation Framework
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
@@ -317,3 +318,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 [![GitHub forks](https://img.shields.io/github/forks/yourusername/test-automation-framework?style=social)](https://github.com/yourusername/test-automation-framework)
 [![GitHub issues](https://img.shields.io/github/issues/yourusername/test-automation-framework)](https://github.com/yourusername/test-automation-framework)
 [![GitHub pull requests](https://img.shields.io/github/issues-pr/yourusername/test-automation-framework)](https://github.com/yourusername/test-automation-framework)
+=======
+# AI-Projects
+AI engineer development projects
+>>>>>>> 5355f8c7e1c32c0254fb158c5841e3209d1ce8bf
